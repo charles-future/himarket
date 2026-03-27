@@ -1,0 +1,279 @@
+/**
+ * 聊天和会话相关接口
+ */
+
+import request, { type RespI } from "../request";
+
+// ============ 类型定义 ============
+
+export interface ISession {
+  sessionId: string;
+  name: string;
+  products: string[];
+  talkType: string;
+  status: string;
+  createAt: string;
+  updateAt: string;
+}
+
+export interface IAttachment {
+  attachmentId: string;
+  name: string;
+  type: "IMAGE" | "VIDEO" | "AUDIO" | "TEXT";
+  mimeType: string;
+  size: number;
+}
+
+export interface IAttachmentUploadResp extends IAttachment { }
+
+export interface IChatMessage {
+  productId: string;
+  sessionId: string;
+  conversationId: string;
+  questionId: string;
+  question: string;
+  attachments?: {
+    attachmentId: string;
+  }[];
+  stream?: boolean;
+  needMemory?: boolean;
+  enableThinking?: boolean;
+  searchType?: string;
+}
+
+export interface IAnswerResult {
+  answerId: string;
+  productId: string;
+  content: string;
+  usage?: IChatUsage;
+}
+
+export interface IAnswer {
+  results: IAnswerResult[];
+}
+
+export interface IQuestion {
+  questionId: string;
+  content: string;
+  attachments: { attachmentId: string }[];
+  answers: IAnswer[];
+}
+
+export interface IConversation {
+  conversationId: string;
+  questions: IQuestion[];
+}
+
+// ============ MCP 工具调用相关类型 ============
+
+// @chat-legacy: This interface is no longer used
+// export interface IToolMeta {
+//   toolName: string;           // 工具名称
+//   toolNameCn?: string | null; // 工具中文名称
+//   mcpName: string;            // MCP server 名称
+//   mcpNameCn?: string | null;  // MCP server 中文名称
+// }
+
+export interface IToolCall {
+  // @chat-legacy: Legacy fields removed - use mcpServerName and arguments instead
+  // toolMeta?: IToolMeta;
+  // inputSchema?: string;
+  // input?: string;
+
+  id: string; // 工具调用唯一 ID
+  type: string; // 通常为 "function"
+  name: string; // 工具函数名
+  arguments: string; // 工具参数 (JSON string)
+  mcpServerName?: string; // MCP server 名称
+}
+
+export interface IToolResponse {
+  // @chat-legacy: Legacy fields removed - use result instead
+  // toolMeta?: IToolMeta;
+  // output?: string;
+  // responseData?: string;
+
+  id: string; // 工具调用唯一 ID
+  name: string; // 工具函数名
+  result?: unknown; // 工具执行结果
+}
+
+export interface IChatUsage {
+  inputTokens?: number;
+  outputTokens?: number;
+  totalTokens?: number;
+  elapsedTime?: number | null;
+  firstByteTimeout?: number | null;
+}
+
+// ============ V2 版本数据结构 ============
+
+export interface IToolCallInfo {
+  id: string;
+  name: string;
+  arguments: unknown;
+  mcpServerName?: string;
+  result?: unknown;
+}
+
+export interface IAnswerV2 {
+  sequence: number;
+  content: string;
+  usage?: IChatUsage;
+  toolCalls?: IToolCallInfo[];
+}
+
+export interface IQuestionV2 {
+  questionId: string;
+  content: string;
+  createdAt: string;
+  attachments: { attachmentId: string }[];
+  answers: IAnswerV2[];
+}
+
+export interface IConversationV2 {
+  conversationId: string;
+  questions: IQuestionV2[];
+}
+
+export interface IProductConversations {
+  productId: string;
+  conversations: IConversationV2[];
+}
+
+interface CreateSessionData {
+  talkType: string;
+  name: string;
+  products: string[];
+}
+
+interface UpdateSessionData {
+  name: string;
+}
+
+interface GetSessionsParams {
+  page?: number;
+  size?: number;
+}
+
+interface GetSessionsResp {
+  content: ISession[];
+  totalElements: number;
+  totalPages: number;
+  size: number;
+  number: number;
+  first: boolean;
+  last: boolean;
+}
+
+interface SendChatMessageResp {
+  // 根据实际响应结构定义
+  [key: string]: unknown;
+}
+
+// ============ API 函数 ============
+
+/**
+ * 创建会话
+ */
+export function createSession(data: CreateSessionData) {
+  return request.post<RespI<ISession>, RespI<ISession>>("/sessions", data);
+}
+
+/**
+ * 获取会话列表
+ */
+export function getSessions(params?: GetSessionsParams) {
+  return request.get<RespI<GetSessionsResp>, RespI<GetSessionsResp>>(
+    "/sessions",
+    {
+      params: {
+        page: params?.page || 0,
+        size: params?.size || 20,
+      },
+    }
+  );
+}
+
+/**
+ * 更新会话名称
+ */
+export function updateSession(sessionId: string, data: UpdateSessionData) {
+  return request.patch<RespI<ISession>, RespI<ISession>>(
+    `/sessions/${sessionId}`,
+    data
+  );
+}
+
+/**
+ * 删除会话
+ */
+export function deleteSession(sessionId: string) {
+  return request.delete<RespI<void>, RespI<void>>(`/sessions/${sessionId}`);
+}
+
+/**
+ * 发送聊天消息（非流式）
+ */
+export function sendChatMessage(message: IChatMessage) {
+  return request.post<RespI<SendChatMessageResp>, RespI<SendChatMessageResp>>(
+    "/chats",
+    message
+  );
+}
+
+/**
+ * 获取聊天消息流式接口的完整 URL（用于 SSE）
+ */
+export function getChatMessageStreamUrl(): string {
+  const baseURL = (request.defaults.baseURL || "") as string;
+  return `${baseURL}/chats`;
+}
+
+/**
+ * 获取会话的历史聊天记录
+ */
+export function getConversations(sessionId: string) {
+  return request.get<RespI<IConversation[]>, RespI<IConversation[]>>(
+    `/sessions/${sessionId}/conversations`
+  );
+}
+
+/**
+ * 获取会话的历史聊天记录（V2版本 - 支持多模型对比）
+ */
+export function getConversationsV2(sessionId: string) {
+  return request.get<
+    RespI<IProductConversations[]>,
+    RespI<IProductConversations[]>
+  >(`/sessions/${sessionId}/conversations/v2`);
+}
+
+/**
+ * 上传附件
+ */
+export function uploadAttachment(file: File) {
+  const formData = new FormData();
+  formData.append("file", file);
+  return request.post<
+    RespI<IAttachmentUploadResp>,
+    RespI<IAttachmentUploadResp>
+  >("/attachments", formData, {
+    headers: {
+      "Content-Type": "multipart/form-data",
+    },
+  });
+}
+
+export interface IAttachmentContent extends IAttachment {
+  data: string;
+}
+
+/**
+ * 获取附件内容
+ */
+export function getAttachment(attachmentId: string) {
+  return request.get<RespI<IAttachmentContent>, RespI<IAttachmentContent>>(
+    `/attachments/${attachmentId}`
+  );
+}
